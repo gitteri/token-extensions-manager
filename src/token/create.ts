@@ -11,6 +11,12 @@ import {
   Address,
   TransactionSigner,
   IInstruction,
+  Codec,
+  getStructCodec,
+  getU8Codec,
+  getAddressCodec,
+  AccountRole,
+  getEnumCodec,
 } from "@solana/kit";
 import {
   getCreateAccountInstruction,
@@ -26,6 +32,10 @@ import {
   getUpdateTransferHookInstruction,
   TOKEN_2022_PROGRAM_ADDRESS,
   getPreInitializeInstructionsForMintExtensions,
+  getSetAuthorityInstruction,
+  AuthorityType,
+  getSetAuthorityInstructionDataEncoder,
+  SetAuthorityInstructionDataArgs,
 } from "@solana-program/token-2022";
 import { createSolanaClient, createTransaction } from "gill";
 import { loadKeypairSignerFromFile } from "gill/node";
@@ -52,8 +62,8 @@ export const getCreateMintInstructions = async (input: {
   const spaceWithoutPostInitializeExtensions = input.extensions
     ? getMintSize(
         input.extensions.filter(
-          (e) => !postInitializeExtensions.includes(e.__kind),
-        ),
+          (e) => !postInitializeExtensions.includes(e.__kind)
+        )
       )
     : space;
 
@@ -80,9 +90,41 @@ export const getCreateMintInstructions = async (input: {
       },
       {
         programAddress: input.programAddress ?? TOKEN_2022_PROGRAM_ADDRESS,
-      },
+      }
     ),
   ];
+};
+
+// This is a workaround to set the transfer hook program id authority.
+// The SDK does not support setting the transfer hook program id authority yet.
+// This is a manual implementation of the SetAuthority instruction.
+const getSetTransferHookProgramIdAuthorityInstruction = (input: {
+  mint: Address;
+  authority: Address;
+  newAuthority: Address;
+}): IInstruction<string> => {
+  // Use a local enum containing only the variant we need.
+  const AUTHORITY_TYPE_TRANSFER_HOOK_PROGRAM_ID = 10;
+
+  // Encode instruction data manually: discriminator (6) | authorityType (10) | newAuthorityOption (1) | newAuthority (32 bytes)
+  const addressCodec = getAddressCodec();
+  const newAuthorityBytes = addressCodec.encode(input.newAuthority);
+
+  const data = new Uint8Array(1 + 1 + 1 + 32); // 35 bytes
+  data[0] = 6; // discriminator for SetAuthority
+  data[1] = AUTHORITY_TYPE_TRANSFER_HOOK_PROGRAM_ID; // authorityType
+  data[2] = 1; // newAuthorityOption = Some
+  data.set(newAuthorityBytes, 3); // newAuthority
+
+  return {
+    // Account metas must match the canonical order for SetAuthority: [owned, owner]
+    accounts: [
+      { address: input.mint, role: AccountRole.WRITABLE },
+      { address: input.authority, role: AccountRole.READONLY },
+    ],
+    programAddress: TOKEN_2022_PROGRAM_ADDRESS,
+    data,
+  };
 };
 
 /**
@@ -103,7 +145,7 @@ async function createBackedMintInstructions(
     name: string;
     symbol: string;
     uri: string;
-  },
+  }
 ) {
   const tokenProgram = TOKEN_2022_PROGRAM_ADDRESS;
   const mint = await generateKeyPairSigner();
@@ -145,7 +187,7 @@ async function createBackedMintInstructions(
 
   // Transfer hooks extension - enables custom logic on token transfers
   const transferHooksExtension = extension("TransferHook", {
-    authority: authority,
+    authority: feePayer.address, // we will change the authority after deployment
     programId: SYSTEM_PROGRAM_ADDRESS, // Will be disabled after deployment
   });
 
@@ -162,7 +204,7 @@ async function createBackedMintInstructions(
         confidentialBalancesExtension,
         transferHooksExtension,
       ],
-      freezeAuthority: feePayer.address,
+      freezeAuthority: authority,
       mint: mint,
       payer: feePayer,
       programAddress: TOKEN_2022_PROGRAM_ADDRESS,
@@ -176,7 +218,15 @@ async function createBackedMintInstructions(
     name: metadata.name,
     symbol: metadata.symbol,
     uri: metadata.uri,
-    updateAuthority: feePayer.address,
+    updateAuthority: authority,
+  });
+
+  // Change the mint authority to the authority
+  const changeMintAuthorityInstruction = getSetAuthorityInstruction({
+    owned: mint.address,
+    owner: feePayer,
+    newAuthority: authority,
+    authorityType: AuthorityType.MintTokens,
   });
 
   // Disable transfer hook program
@@ -184,6 +234,23 @@ async function createBackedMintInstructions(
     mint: mint.address,
     authority: feePayer.address,
     programId: null,
+  });
+
+  // Update the transfer hook program id authority
+  // We can re-enable this once the SDK supports setting the transfer hook program id authority.
+  // const updateTransferHookProgramIdAuthorityInstruction =
+  //   getSetAuthorityInstruction({
+  //     owned: mint.address,
+  //     owner: feePayer,
+  //     newAuthority: authority,
+  //     // Not available in SDK yet. AuthorityType.TransferHookProgramId,
+  //     authorityType: 10 as AuthorityType,
+  //   });
+
+  const updateTransferHookProgramIdAuthorityInstruction = getSetTransferHookProgramIdAuthorityInstruction({
+    mint: mint.address,
+    authority: feePayer.address,
+    newAuthority: authority,
   });
 
   // Get pre-initialization instructions for all extensions
@@ -197,7 +264,7 @@ async function createBackedMintInstructions(
   ];
 
   const preInitializeInstructions = extensionsList.flatMap((ext) =>
-    getPreInitializeInstructionsForMintExtensions(mint.address, [ext]),
+    getPreInitializeInstructionsForMintExtensions(mint.address, [ext])
   );
 
   // Return all instructions in the correct order
@@ -206,7 +273,9 @@ async function createBackedMintInstructions(
     ...preInitializeInstructions,
     initMintInstruction,
     initMetadataInstruction,
+    changeMintAuthorityInstruction,
     updateTransferHookInstruction,
+    updateTransferHookProgramIdAuthorityInstruction,
   ];
 }
 
@@ -227,6 +296,7 @@ async function createMint(
   name: string,
   decimals: number,
   payer: TransactionSigner<string>,
+  authority: Address
 ) {
   // Get latest blockhash for transaction
   const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
@@ -235,13 +305,13 @@ async function createMint(
   const createMintInstructions = await createBackedMintInstructions(
     rpc,
     payer,
-    payer.address,
+    authority,
     decimals,
     {
       name,
       symbol,
       uri,
-    },
+    }
   );
 
   // Create and sign transaction
@@ -266,13 +336,22 @@ const { rpc, sendAndConfirmTransaction } = createSolanaClient({
 // Example usage
 (async () => {
   const payer = await loadKeypairSignerFromFile();
+  const authority = "8VGGybCZ4PRpJyJKD9NWTPcuprzJR4fkziWWWAhwg5fc" as Address;
   const symbol = "SST";
   const uri =
     "https://raw.githubusercontent.com/solana-developers/opos-asset/main/assets/Climate/metadata.json";
   const name = "super sweet token";
   const decimals = 6;
 
-  const tx = await createMint(rpc, symbol, uri, name, decimals, payer);
+  const tx = await createMint(
+    rpc,
+    symbol,
+    uri,
+    name,
+    decimals,
+    payer,
+    authority
+  );
 
   console.log(tx);
 })();
