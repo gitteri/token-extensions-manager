@@ -11,12 +11,8 @@ import {
   Address,
   TransactionSigner,
   IInstruction,
-  Codec,
-  getStructCodec,
-  getU8Codec,
   getAddressCodec,
   AccountRole,
-  getEnumCodec,
 } from "@solana/kit";
 import {
   getCreateAccountInstruction,
@@ -32,11 +28,8 @@ import {
   getUpdateTransferHookInstruction,
   TOKEN_2022_PROGRAM_ADDRESS,
   getPreInitializeInstructionsForMintExtensions,
-  getSetAuthorityInstruction,
-  AuthorityType,
-  getSetAuthorityInstructionDataEncoder,
-  SetAuthorityInstructionDataArgs,
 } from "@solana-program/token-2022";
+import { getSetAuthorityInstruction } from "./setAuthority";
 import { createSolanaClient, createTransaction } from "gill";
 import { loadKeypairSignerFromFile } from "gill/node";
 
@@ -223,10 +216,10 @@ async function createBackedMintInstructions(
 
   // Change the mint authority to the authority
   const changeMintAuthorityInstruction = getSetAuthorityInstruction({
-    owned: mint.address,
-    owner: feePayer,
+    mint: mint.address,
+    authority: feePayer.address,
     newAuthority: authority,
-    authorityType: AuthorityType.MintTokens,
+    authorityType: "MintTokens",
   });
 
   // Disable transfer hook program
@@ -247,10 +240,11 @@ async function createBackedMintInstructions(
   //     authorityType: 10 as AuthorityType,
   //   });
 
-  const updateTransferHookProgramIdAuthorityInstruction = getSetTransferHookProgramIdAuthorityInstruction({
+  const updateTransferHookProgramIdAuthorityInstruction = getSetAuthorityInstruction({
     mint: mint.address,
     authority: feePayer.address,
     newAuthority: authority,
+    authorityType: "TransferHookProgramId",
   });
 
   // Get pre-initialization instructions for all extensions

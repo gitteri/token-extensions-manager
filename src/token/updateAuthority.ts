@@ -1,11 +1,11 @@
 import {
-  AuthorityType,
-  getSetAuthorityInstruction,
   getUpdateTokenMetadataUpdateAuthorityInstruction,
+  TOKEN_2022_PROGRAM_ADDRESS,
 } from "@solana-program/token-2022";
 import {
   Address,
   compileTransaction,
+  createNoopSigner,
   getBase58Decoder,
   IInstruction,
   Rpc,
@@ -13,7 +13,7 @@ import {
   TransactionSigner,
 } from "@solana/kit";
 import { createSolanaClient, createTransaction } from "gill";
-import { loadKeypairSignerFromFile } from "gill/node";
+import { getSetAuthorityInstruction } from "./setAuthority";
 
 const { rpc } = createSolanaClient({
   urlOrMoniker: "devnet",
@@ -21,36 +21,41 @@ const { rpc } = createSolanaClient({
 
 const getUpdateAuthorityInstructions = (input: {
   mint: Address;
-  role: string | AuthorityType;
+  role: string;
   currentAuthority: TransactionSigner<string>;
   newAuthority: Address;
 }) => {
   let instructions: IInstruction<string>[] = [];
   if (input.role === "Metadata") {
     return [
-      getUpdateTokenMetadataUpdateAuthorityInstruction({
-        metadata: input.mint,
-        updateAuthority: input.currentAuthority,
-        newUpdateAuthority: input.newAuthority,
-      }),
+      getUpdateTokenMetadataUpdateAuthorityInstruction(
+        {
+          metadata: input.mint,
+          updateAuthority: input.currentAuthority,
+          newUpdateAuthority: input.newAuthority,
+        },
+        {
+          programAddress: TOKEN_2022_PROGRAM_ADDRESS,
+        }
+      ),
     ];
   }
-  switch (input.role as AuthorityType) {
-    case AuthorityType.MintTokens:
-    case AuthorityType.FreezeAccount:
-      // NOTE: the following authorityTypes require a new version of the token-2022 sdk to be released
-      // https://github.com/solana-program/token-2022/pull/434
-      // case AuthorityType.ConfidentialTransferMint:
-      // case AuthorityType.MetadataPointer:
-      // case AuthorityType.PermanentDelegate:
-      // case AuthorityType.ScaledUiAmount:
-      // case AuthorityType.TransferHookProgramId:
+  switch (input.role) {
+    case "MintTokens":
+    case "FreezeAccount":
+    // NOTE: the following authorityTypes require a new version of the token-2022 sdk to be released
+    // https://github.com/solana-program/token-2022/pull/434
+    case "ConfidentialTransferMint":
+    case "MetadataPointer":
+    case "PermanentDelegate":
+    case "ScaledUiAmount":
+    case "TransferHookProgramId":
       instructions = [
         getSetAuthorityInstruction({
-          owned: input.mint,
-          owner: input.currentAuthority,
+          mint: input.mint,
+          authority: input.currentAuthority.address,
           newAuthority: input.newAuthority,
-          authorityType: input.role as AuthorityType,
+          authorityType: input.role,
         }),
       ];
       break;
@@ -63,12 +68,17 @@ const getUpdateAuthorityInstructions = (input: {
 const updateAuthority = async (input: {
   rpc: Rpc<SolanaRpcApi>;
   mint: Address;
-  role: string | AuthorityType;
+  role: string;
   payer: TransactionSigner<string>;
   currentAuthority: TransactionSigner<string>;
   newAuthority: Address;
 }) => {
-  const instructions = getUpdateAuthorityInstructions(input);
+  const instructions = getUpdateAuthorityInstructions({
+    mint: input.mint,
+    role: input.role,
+    currentAuthority: input.currentAuthority,
+    newAuthority: input.newAuthority,
+  });
   const { value: latestBlockhash } = await input.rpc
     .getLatestBlockhash()
     .send();
@@ -78,23 +88,25 @@ const updateAuthority = async (input: {
     latestBlockhash,
     instructions,
   });
+
   const compiledTx = compileTransaction(tx);
   return getBase58Decoder().decode(compiledTx.messageBytes);
 };
 
 (async () => {
-  const payer = await loadKeypairSignerFromFile();
-  const currentAuthority = await loadKeypairSignerFromFile();
+
+  const payer = "DmatrEXUzjvGRQeQAUwefktx78f5a8ZU2gTUvDv6Zmca";
   const mint = "5cxLoRgCAcPUCwwnfqmbTKVEDeq2TCaDUN3Cej39QanB";
+  const currentAuthority = "8VGGybCZ4PRpJyJKD9NWTPcuprzJR4fkziWWWAhwg5fc";
   const newAuthority = "8VGGybCZ4PRpJyJKD9NWTPcuprzJR4fkziWWWAhwg5fc";
-  const role = AuthorityType.MintTokens;
+  const role = "ScaledUiAmount";
 
   const tx = await updateAuthority({
     rpc,
     mint: mint as Address,
     role,
-    payer,
-    currentAuthority,
+    payer: createNoopSigner(payer as Address),
+    currentAuthority: createNoopSigner(currentAuthority as Address),
     newAuthority: newAuthority as Address,
   });
 
