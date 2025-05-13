@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse } from "axios";
-import { createHash, createHmac } from "crypto";
+import { createHmac } from "crypto";
 import { Buffer } from "buffer";
 
 export interface FordefiConfig {

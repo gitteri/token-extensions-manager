@@ -1,10 +1,5 @@
-import { SignatureBytes } from "@solana/kit";
 
-import { Transaction } from "@solana/kit";
-
-import { address } from "@solana/kit";
-
-import { TransactionSendingSigner } from "@solana/kit";
+import { SignatureBytes, Transaction, address, TransactionSendingSigner } from "@solana/kit";
 import { FordefiClient } from "../fordefi/client";
 
 const fordefiSigner = (
