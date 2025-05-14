@@ -34,7 +34,7 @@ export const getSetAuthorityInstruction = (input: {
     Pause: 16,
   };
   const authorityType = AuthorityType[input.authorityType as keyof typeof AuthorityType];
-  if (!authorityType) {
+  if (isNaN(authorityType)) {
     throw new Error(`Invalid authority type: ${input.authorityType}`);
   }
 
