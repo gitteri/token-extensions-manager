@@ -28,6 +28,7 @@ import {
   getUpdateTransferHookInstruction,
   TOKEN_2022_PROGRAM_ADDRESS,
   getPreInitializeInstructionsForMintExtensions,
+  AccountState,
 } from "@solana-program/token-2022";
 import { getSetAuthorityInstruction } from "./setAuthority";
 import { createSolanaClient, createTransaction } from "gill";
@@ -163,6 +164,10 @@ async function createBackedMintInstructions(
     delegate: authority,
   });
 
+  const defaultAccountStateExtension = extension("DefaultAccountState", {
+    state: AccountState.Initialized,
+  });
+
   // Scaled UI amount extension - for displaying scaled token amounts in UI
   const scaledUiAmountMintExtension = extension("ScaledUiAmountConfig", {
     authority: authority,
@@ -193,6 +198,7 @@ async function createBackedMintInstructions(
         metadataPointer,
         metadataExtensionData,
         permanentDelegateExtension,
+        defaultAccountStateExtension,
         scaledUiAmountMintExtension,
         confidentialBalancesExtension,
         transferHooksExtension,
@@ -252,6 +258,7 @@ async function createBackedMintInstructions(
     metadataPointer,
     metadataExtensionData,
     permanentDelegateExtension,
+    defaultAccountStateExtension,
     scaledUiAmountMintExtension,
     confidentialBalancesExtension,
     transferHooksExtension,
