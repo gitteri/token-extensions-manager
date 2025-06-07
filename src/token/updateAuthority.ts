@@ -1,4 +1,6 @@
 import {
+  AuthorityType,
+  getSetAuthorityInstruction,
   getUpdateTokenMetadataUpdateAuthorityInstruction,
   TOKEN_2022_PROGRAM_ADDRESS,
 } from "@solana-program/token-2022";
@@ -13,7 +15,6 @@ import {
   TransactionSigner,
 } from "@solana/kit";
 import { createSolanaClient, createTransaction } from "gill";
-import { getSetAuthorityInstruction } from "./setAuthority";
 
 const { rpc } = createSolanaClient({
   urlOrMoniker: "devnet",
@@ -26,6 +27,7 @@ const getUpdateAuthorityInstructions = (input: {
   newAuthority: Address;
 }) => {
   let instructions: IInstruction<string>[] = [];
+  let authorityType: AuthorityType;
   if (input.role === "Metadata") {
     return [
       getUpdateTokenMetadataUpdateAuthorityInstruction(
@@ -42,26 +44,70 @@ const getUpdateAuthorityInstructions = (input: {
   }
   switch (input.role) {
     case "MintTokens":
+      authorityType = AuthorityType.MintTokens;
+      break;
     case "FreezeAccount":
-    // NOTE: the following authorityTypes require a new version of the token-2022 sdk to be released
-    // https://github.com/solana-program/token-2022/pull/434
+      authorityType = AuthorityType.FreezeAccount;
+      break;
+    case "AccountOwner":
+      authorityType = AuthorityType.AccountOwner;
+      break;
+    case "CloseAccount":
+      authorityType = AuthorityType.CloseAccount;
+      break;
     case "ConfidentialTransferMint":
+      authorityType = AuthorityType.ConfidentialTransferMint;
+      break;
     case "MetadataPointer":
+      authorityType = AuthorityType.MetadataPointer;
+      break;
     case "PermanentDelegate":
+      authorityType = AuthorityType.PermanentDelegate;
+      break;
     case "ScaledUiAmount":
+      authorityType = AuthorityType.ScaledUiAmount;
+      break;
     case "TransferHookProgramId":
-      instructions = [
-        getSetAuthorityInstruction({
-          mint: input.mint,
-          authority: input.currentAuthority.address,
-          newAuthority: input.newAuthority,
-          authorityType: input.role,
-        }),
-      ];
+      authorityType = AuthorityType.TransferHookProgramId;
+      break;
+    case "ConfidentialTransferFeeConfig":
+      authorityType = AuthorityType.ConfidentialTransferFeeConfig;
+      break;
+    case "GroupPointer":
+      authorityType = AuthorityType.GroupPointer;
+      break;
+    case "GroupMemberPointer":
+      authorityType = AuthorityType.GroupMemberPointer;
+      break;
+    case "Pause":
+      authorityType = AuthorityType.Pause;
+      break;
+    case "InterestRate":
+      authorityType = AuthorityType.InterestRate;
+      break;
+    case "WithheldWithdraw":
+      authorityType = AuthorityType.WithheldWithdraw;
+      break;
+    case "CloseMint":
+      authorityType = AuthorityType.CloseMint;
+      break;
+    case "TransferFeeConfig":
+      authorityType = AuthorityType.TransferFeeConfig;
+      break;
+    case "TransferHookProgramId":
+      authorityType = AuthorityType.TransferHookProgramId;
       break;
     default:
       throw new Error(`Unsupported authority role: ${input.role}`);
   }
+  instructions = [
+    getSetAuthorityInstruction({
+      owned: input.mint,
+      owner: input.currentAuthority.address,
+      newAuthority: input.newAuthority,
+      authorityType,
+    }),
+  ];
   return instructions;
 };
 

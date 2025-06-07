@@ -25,12 +25,13 @@ import {
   getInitializeMintInstruction,
   getInitializeTokenMetadataInstruction,
   getMintSize,
+  getSetAuthorityInstruction,
   getUpdateTransferHookInstruction,
   TOKEN_2022_PROGRAM_ADDRESS,
   getPreInitializeInstructionsForMintExtensions,
   AccountState,
+  AuthorityType,
 } from "@solana-program/token-2022";
-import { getSetAuthorityInstruction } from "./setAuthority";
 import { createSolanaClient, createTransaction } from "gill";
 import { loadKeypairSignerFromFile } from "gill/node";
 
@@ -176,6 +177,11 @@ async function createBackedMintInstructions(
     newMultiplier: 1,
   });
 
+  const pausableMintExtension = extension("PausableConfig", {
+    authority: authority,
+    paused: false,
+  });
+
   // Confidential balances extension - enables confidential token transfers and balances
   const confidentialBalancesExtension = extension("ConfidentialTransferMint", {
     authority: authority,
@@ -200,6 +206,7 @@ async function createBackedMintInstructions(
         permanentDelegateExtension,
         defaultAccountStateExtension,
         scaledUiAmountMintExtension,
+        pausableMintExtension,
         confidentialBalancesExtension,
         transferHooksExtension,
       ],
@@ -222,10 +229,10 @@ async function createBackedMintInstructions(
 
   // Change the mint authority to the authority
   const changeMintAuthorityInstruction = getSetAuthorityInstruction({
-    mint: mint.address,
-    authority: feePayer.address,
+    owned: mint.address,
+    owner: feePayer.address,
     newAuthority: authority,
-    authorityType: "MintTokens",
+    authorityType: AuthorityType.MintTokens,
   });
 
   // Disable transfer hook program
@@ -235,23 +242,13 @@ async function createBackedMintInstructions(
     programId: null,
   });
 
-  // Update the transfer hook program id authority
-  // We can re-enable this once the SDK supports setting the transfer hook program id authority.
-  // const updateTransferHookProgramIdAuthorityInstruction =
-  //   getSetAuthorityInstruction({
-  //     owned: mint.address,
-  //     owner: feePayer,
-  //     newAuthority: authority,
-  //     // Not available in SDK yet. AuthorityType.TransferHookProgramId,
-  //     authorityType: 10 as AuthorityType,
-  //   });
-
-  const updateTransferHookProgramIdAuthorityInstruction = getSetAuthorityInstruction({
-    mint: mint.address,
-    authority: feePayer.address,
-    newAuthority: authority,
-    authorityType: "TransferHookProgramId",
-  });
+  const updateTransferHookProgramIdAuthorityInstruction =
+    getSetAuthorityInstruction({
+      owned: mint.address,
+      owner: feePayer.address,
+      newAuthority: authority,
+      authorityType: AuthorityType.TransferHookProgramId,
+    });
 
   // Get pre-initialization instructions for all extensions
   const extensionsList = [
@@ -260,6 +257,7 @@ async function createBackedMintInstructions(
     permanentDelegateExtension,
     defaultAccountStateExtension,
     scaledUiAmountMintExtension,
+    pausableMintExtension,
     confidentialBalancesExtension,
     transferHooksExtension,
   ];
