@@ -90,38 +90,6 @@ export const getCreateMintInstructions = async (input: {
   ];
 };
 
-// This is a workaround to set the transfer hook program id authority.
-// The SDK does not support setting the transfer hook program id authority yet.
-// This is a manual implementation of the SetAuthority instruction.
-const getSetTransferHookProgramIdAuthorityInstruction = (input: {
-  mint: Address;
-  authority: Address;
-  newAuthority: Address;
-}): IInstruction<string> => {
-  // Use a local enum containing only the variant we need.
-  const AUTHORITY_TYPE_TRANSFER_HOOK_PROGRAM_ID = 10;
-
-  // Encode instruction data manually: discriminator (6) | authorityType (10) | newAuthorityOption (1) | newAuthority (32 bytes)
-  const addressCodec = getAddressCodec();
-  const newAuthorityBytes = addressCodec.encode(input.newAuthority);
-
-  const data = new Uint8Array(1 + 1 + 1 + 32); // 35 bytes
-  data[0] = 6; // discriminator for SetAuthority
-  data[1] = AUTHORITY_TYPE_TRANSFER_HOOK_PROGRAM_ID; // authorityType
-  data[2] = 1; // newAuthorityOption = Some
-  data.set(newAuthorityBytes, 3); // newAuthority
-
-  return {
-    // Account metas must match the canonical order for SetAuthority: [owned, owner]
-    accounts: [
-      { address: input.mint, role: AccountRole.WRITABLE },
-      { address: input.authority, role: AccountRole.READONLY },
-    ],
-    programAddress: TOKEN_2022_PROGRAM_ADDRESS,
-    data,
-  };
-};
-
 /**
  * Generates instructions for creating a Token-2022 token with multiple extensions
  * @param rpc RPC client for Solana network
@@ -335,7 +303,7 @@ const { rpc, sendAndConfirmTransaction } = createSolanaClient({
 // Example usage
 (async () => {
   const payer = await loadKeypairSignerFromFile();
-  const authority = "8VGGybCZ4PRpJyJKD9NWTPcuprzJR4fkziWWWAhwg5fc" as Address;
+  const authority = payer.address;
   const symbol = "SST";
   const uri =
     "https://raw.githubusercontent.com/solana-developers/opos-asset/main/assets/Climate/metadata.json";
